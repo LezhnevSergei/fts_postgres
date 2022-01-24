@@ -2,13 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	_ "github.com/lib/pq"
 
@@ -25,16 +25,59 @@ type result struct {
 	Snippet     template.HTML
 }
 
-func CalcMedian(n []int64) float64 {
+type Anal struct{}
+
+func (a Anal) Print(searchTimes []float32) {
+	fmt.Println("Median (100):", a.CalcMedian(searchTimes), "ms")
+	fmt.Println("Avg (100):", a.CalcAvg(searchTimes), "ms")
+	fmt.Println("Min (100):", a.CalcMin(searchTimes), "ms")
+	fmt.Println("Max (100):", a.CalcMax(searchTimes), "ms")
+}
+
+func (a Anal) CalcAvg(n []float32) float32 {
+	var sum float32 = 0
+
+	for _, t := range n {
+		sum += t
+	}
+
+	return sum / float32(len(n))
+}
+
+func (a Anal) CalcMin(n []float32) float32 {
+	var min float32 = 1000
+
+	for _, t := range n {
+		if t < min {
+			min = t
+		}
+	}
+
+	return min
+}
+
+func (a Anal) CalcMax(n []float32) float32 {
+	var max float32 = 0
+
+	for _, t := range n {
+		if t > max {
+			max = t
+		}
+	}
+
+	return max
+}
+
+func (a Anal) CalcMedian(n []float32) float32 {
 	sort.Slice(n, func(i, j int) bool { return n[i] < n[j] })
 
 	mNumber := len(n) / 2
 
 	if len(n)%2 != 0 {
-		return float64(n[mNumber])
+		return n[mNumber]
 	}
 
-	return float64(n[mNumber-1]+n[mNumber]) / 2
+	return float32(n[mNumber-1]+n[mNumber]) / 2.0
 }
 
 func main() {
@@ -78,35 +121,34 @@ func main() {
 			return
 		}
 		if q == "calculate" {
-			searchTimes := make([]int64, 0, 100)
-			for _, word := range words {
-				start := time.Now()
-				rows, err := db.Query(sqlstore.SearchIncidents, word)
+			searchTimes := make([]float32, 0, 100)
+			for i, word := range words {
+				println(i, "/100")
+
+				rows, err := db.Query(sqlstore.CalcSearchIncidents, word)
 				if err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}
 				defer rows.Close()
-				results := make([]result, 0, 10)
+				var explain []map[string]interface{}
 				for rows.Next() {
-					var r result
-					if err := rows.Scan(&r.IncidentId, &r.DisplayName, &r.Description); err != nil {
+					var explainRaw []uint8
+					if err := rows.Scan(&explainRaw); err != nil {
 						http.Error(w, err.Error(), 404)
 						return
 					}
-					results = append(results, r)
-				}
-				if err := rows.Err(); err != nil {
-					http.Error(w, err.Error(), 404)
-					return
-				}
 
-				timeWaiting := time.Since(start).Milliseconds()
-				if timeWaiting > 30 {
-					searchTimes = append(searchTimes, time.Since(start).Milliseconds())
+					if err = json.Unmarshal(explainRaw, &explain); err != nil {
+						http.Error(w, err.Error(), 500)
+						return
+					}
 				}
+				executionTime := float32(explain[0]["Execution Time"].(float64))
+				searchTimes = append(searchTimes, executionTime)
 			}
-			fmt.Println(CalcMedian(searchTimes))
+			a := Anal{}
+			a.Print(searchTimes)
 			return
 		}
 
