@@ -7,11 +7,11 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"sort"
 	"strings"
 
 	_ "github.com/lib/pq"
 
+	"fts_pg/src/server/analytics"
 	"fts_pg/src/server/sqlstore"
 	"fts_pg/src/server/templates"
 )
@@ -25,65 +25,10 @@ type result struct {
 	Snippet     template.HTML
 }
 
-type Anal struct{}
-
-func (a Anal) Print(searchTimes []float32) {
-	fmt.Println("Median (100):", a.CalcMedian(searchTimes), "ms")
-	fmt.Println("Avg (100):", a.CalcAvg(searchTimes), "ms")
-	fmt.Println("Min (100):", a.CalcMin(searchTimes), "ms")
-	fmt.Println("Max (100):", a.CalcMax(searchTimes), "ms")
-}
-
-func (a Anal) CalcAvg(n []float32) float32 {
-	var sum float32 = 0
-
-	for _, t := range n {
-		sum += t
-	}
-
-	return sum / float32(len(n))
-}
-
-func (a Anal) CalcMin(n []float32) float32 {
-	var min float32 = 1000
-
-	for _, t := range n {
-		if t < min {
-			min = t
-		}
-	}
-
-	return min
-}
-
-func (a Anal) CalcMax(n []float32) float32 {
-	var max float32 = 0
-
-	for _, t := range n {
-		if t > max {
-			max = t
-		}
-	}
-
-	return max
-}
-
-func (a Anal) CalcMedian(n []float32) float32 {
-	sort.Slice(n, func(i, j int) bool { return n[i] < n[j] })
-
-	mNumber := len(n) / 2
-
-	if len(n)%2 != 0 {
-		return n[mNumber]
-	}
-
-	return float32(n[mNumber-1]+n[mNumber]) / 2.0
-}
-
 func main() {
 	words := []string{"layer", "opposite", "waist", "become", "address", "adult", "upper", "twelve", "card", "prefer", "patient", "concerning", "welcome", "bread", "connect", "beyond", "law", "northern", "more", "gray", "west", "except", "OK", "negative", "nation", "program", "plenty", "wine", "information", "produce", "animal", "smart", "fear", "lock", "upper", "physical", "beautiful", "truck", "steady", "card", "walk", "rock", "bear", "grass", "hand", "odd", "proof", "decrease", "represent", "over", "quiet", "solve", "require", "important", "inform", "nose", "very", "crowd", "third", "request", "woman", "practical", "invite", "adjective", "wake", "soon", "itself", "relation", "fork", "food", "average", "change", "well", "each", "quality", "supply", "point", "dollar", "child", "pound", "balance", "suddenly", "cook", "notice", "traffic", "recognize", "drunk", "toilet", "always", "say", "reason", "under", "forget", "replace", "medical", "clothes", "breast", "straight", "duck", "admit"}
 
-	dburl := "postgresql://roswell@127.0.0.1:5432/nextdb?sslmode=disable"
+	dburl := "postgresql://postgres@127.0.0.1:5432/nextdb?sslmode=disable"
 
 	var err error
 	if db, err = sql.Open("postgres", dburl); err != nil {
@@ -107,7 +52,7 @@ func main() {
 			for rows.Next() {
 				var r result
 				var snip string
-				if err := rows.Scan(&r.DisplayName, &r.Description); err != nil {
+				if err := rows.Scan(&r.IncidentId, &r.DisplayName, &r.Description); err != nil {
 					http.Error(w, err.Error(), 404)
 					return
 				}
@@ -147,8 +92,8 @@ func main() {
 				executionTime := float32(explain[0]["Execution Time"].(float64))
 				searchTimes = append(searchTimes, executionTime)
 			}
-			a := Anal{}
-			a.Print(searchTimes)
+			a := analytics.CreateAnal()
+			a.Show(searchTimes)
 			return
 		}
 
@@ -165,7 +110,7 @@ func main() {
 		for rows.Next() {
 			var r result
 			var snip string
-			if err := rows.Scan(&r.IncidentId, &r.DisplayName, &r.Description); err != nil {
+			if err := rows.Scan(&r.IncidentId); err != nil {
 				http.Error(w, err.Error(), 404)
 				return
 			}
@@ -177,12 +122,18 @@ func main() {
 			return
 		}
 
-		tplResults.Execute(w, map[string]interface{}{
+		err = tplResults.Execute(w, map[string]interface{}{
 			"Results": results,
 			"Query":   q,
 		})
-
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	})
 
-	log.Fatal(http.ListenAndServe(":1337", nil))
+	const PORT = "1337"
+
+	fmt.Printf("Server starting on %v port\n", PORT)
+	log.Fatal(http.ListenAndServe(":"+PORT, nil))
 }

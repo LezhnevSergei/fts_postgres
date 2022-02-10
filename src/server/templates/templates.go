@@ -23,6 +23,7 @@ const TplStrHome = `
 	{{range .Results}}
 	<div class="row" style="padding: 1.5em 0; border-bottom: 1px solid #eee"><div class="col-sm-11 col-sm-offset-1">
 		<div style="font-size: 1.2em">
+			{{.IncidentId}}<br/>
 			{{.Description}}<br/>
 			{{.DisplayName}}<br/>
 		</div>

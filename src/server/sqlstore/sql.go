@@ -8,18 +8,19 @@ from incidents
 `
 
 const ListRules = `
-select r.display_name,
+select i.incident_id,
+       r.display_name,
        r.description
-from rules as r;
+from roswell.incidents as i
+left join roswell.rules r on i.rule_id = r.rule_id
+limit 50;
 `
 
 const SearchIncidents = `
-select inc.incident_id,
-       r.display_name,
-       r.description
-from plainto_tsquery($1) as q, incidents as inc
-         left join rules as r on inc.rule_id = r.rule_id
-         left join tsvectors as r_ts on r.rule_id = r_ts.rule_id
+select i.incident_id
+from plainto_tsquery($1) as q,
+     roswell.incidents as i
+         left join roswell.tsvectors as r_ts on i.incident_id = r_ts.incident_id
 where r_ts.tvs @@ q
 order by ts_rank(r_ts.tvs, q) desc
 limit 50;
@@ -27,12 +28,9 @@ limit 50;
 
 const CalcSearchIncidents = `
 explain (ANALYZE, FORMAT JSON)
-select inc.incident_id,
-       r.display_name,
-       r.description
-from plainto_tsquery($1) as q, incidents as inc
-         left join rules as r on inc.rule_id = r.rule_id
-         left join tsvectors as r_ts on r.rule_id = r_ts.rule_id
+select inc.incident_id
+from plainto_tsquery($1) as q, roswell.incidents as inc
+         left join roswell.tsvectors as r_ts on inc.incident_id = r_ts.incident_id
 where r_ts.tvs @@ q
 order by ts_rank(r_ts.tvs, q) desc
 limit 50;
